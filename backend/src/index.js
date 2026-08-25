@@ -25,10 +25,10 @@ app.use(cors({
     origin: [
         'http://localhost:5173',
         'http://localhost:3000',
-        'https://provision-app.vercel.app',
-        'https://provision-app.netlify.app',
-        'https://provision-app.onrender.com',
-        'https://provision-app-backend.onrender.com'
+        'https://provision-app-ruby.vercel.app',
+        'https://provisionsys.netlify.app',
+        'https://provision-app-pzq6.onrender.com',
+        
     ],
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
