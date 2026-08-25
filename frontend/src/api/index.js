@@ -8,6 +8,14 @@ const API = axios.create({
     },
 });
 
+// User API
+export const userAPI = {
+    getAll: () => API.get('/users'),
+    getById: (id) => API.get(`/users/${id}`),
+    createCashier: (data) => API.post('/users/cashier', data),
+    deleteUser: (id) => API.delete(`/users/${id}`),
+};
+
 // Add token to every request
 API.interceptors.request.use((config) => {
     const token = localStorage.getItem('token');
