@@ -48,6 +48,7 @@ export const productAPI = {
 // Stock API
 export const stockAPI = {
     getByStore: (storeId) => API.get(`/stock/store/${storeId}`),
+    getSummary: () => API.get('/stock/summary'),  // CHANGE THIS
     add: (data) => API.post('/stock/add', data),
     getLowStock: () => API.get('/stock/low-stock'),
 };
