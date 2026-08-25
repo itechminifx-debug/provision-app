@@ -11,17 +11,29 @@ const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/users');
 const productRoutes = require('./routes/products');
 const stockRoutes = require('./routes/stock');
-const saleRoutes = require('./routes/sales'); 
+const saleRoutes = require('./routes/sales');
+const transferRoutes = require('./routes/transfers');
 const debtorRoutes = require('./routes/debtors');
 const reportRoutes = require('./routes/reports');
-const transferRoutes = require('./routes/transfers');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
 // Middleware
 app.use(helmet());
-app.use(cors());
+app.use(cors({
+    origin: [
+        'http://localhost:5173',
+        'http://localhost:3000',
+        'https://provision-app.vercel.app',
+        'https://provision-app.netlify.app',
+        'https://provision-app.onrender.com',
+        'https://provision-app-backend.onrender.com'
+    ],
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization']
+}));
 app.use(morgan('dev'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -31,10 +43,10 @@ app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/stock', stockRoutes);
-app.use('/api/sales', saleRoutes);  
+app.use('/api/sales', saleRoutes);
+app.use('/api/transfers', transferRoutes);
 app.use('/api/debtors', debtorRoutes);
 app.use('/api/reports', reportRoutes);
-app.use('/api/transfers', transferRoutes);
 
 // Test route
 app.get('/', (req, res) => {
@@ -62,9 +74,9 @@ app.get('/api/test-db', async (req, res) => {
 // Error handling middleware
 app.use((err, req, res, next) => {
     console.error('Error:', err.message);
-    res.status(500).json({
+    res.status(500).json({ 
         error: 'Something went wrong!',
-        message: err.message
+        message: err.message 
     });
 });
 
@@ -88,5 +100,8 @@ app.listen(PORT, () => {
     console.log(`   POST http://localhost:${PORT}/api/stock/add (Admin only)`);
     console.log(`   POST http://localhost:${PORT}/api/sales`);
     console.log(`   GET  http://localhost:${PORT}/api/sales`);
+    console.log(`   POST http://localhost:${PORT}/api/transfers (Admin only)`);
+    console.log(`   GET  http://localhost:${PORT}/api/transfers (Admin only)`);
+    console.log(`   GET  http://localhost:${PORT}/api/reports (Admin only)`);
     console.log('\n✅ Server is ready!');
 });
