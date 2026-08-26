@@ -94,9 +94,14 @@ const deleteProduct = async (req, res) => {
             return res.status(404).json({ error: 'Product not found' });
         }
 
+        // First, delete all stock entries for this product
+        const pool = require('../config/database');
+        await pool.query('DELETE FROM stock WHERE product_id = $1', [id]);
+
+        // Then delete the product
         await Product.delete(id);
 
-        res.json({ message: 'Product deleted successfully' });
+        res.json({ message: 'Product and associated stock deleted successfully' });
     } catch (error) {
         console.error('Delete product error:', error);
         res.status(500).json({ error: 'An error occurred' });

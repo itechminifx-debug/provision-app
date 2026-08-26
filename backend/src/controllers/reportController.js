@@ -238,7 +238,8 @@ const getLowStockReport = async (req, res) => {
             ORDER BY st.quantity ASC
         `;
         const result = await pool.query(query, [alertThreshold]);
-
+        res.json(result.rows);
+        
         const total_low_stock_items = result.rows.length;
 
         // Count low stock items by store

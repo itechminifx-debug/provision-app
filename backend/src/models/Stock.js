@@ -1,6 +1,35 @@
 const pool = require('../config/database');
 
 class Stock {
+    // Get stock summary - ONLY shows products that have stock entries
+    static async getSummary() {
+        try {
+            const query = `
+                SELECT 
+                    p.id AS product_id,
+                    p.name AS product_name,
+                    p.category,
+                    s.id AS store_id,
+                    s.name AS store_name,
+                    st.stock_type,
+                    st.quantity,
+                    st.date_added,
+                    st.expiry_date
+                FROM stock st
+                JOIN products p ON st.product_id = p.id
+                JOIN stores s ON st.store_id = s.id
+                WHERE st.quantity > 0
+                ORDER BY p.name ASC, s.name ASC
+            `;
+            const result = await pool.query(query);
+            console.log('📊 Stock Summary Result:', JSON.stringify(result.rows, null, 2));
+            return result.rows;
+        } catch (error) {
+            console.error('❌ getSummary Error:', error);
+            throw error;
+        }
+    }
+
     // Get stock for a specific store
     static async getByStore(storeId) {
         const query = `
@@ -24,26 +53,6 @@ class Stock {
             ORDER BY p.name ASC
         `;
         const result = await pool.query(query, [storeId]);
-        return result.rows;
-    }
-
-    // Get stock summary (new vs old) for all stores
-    static async getSummary() {
-        const query = `
-            SELECT 
-                p.id AS product_id,
-                p.name AS product_name,
-                s.id AS store_id,
-                s.name AS store_name,
-                st.stock_type,
-                COALESCE(SUM(st.quantity), 0) AS total_quantity
-            FROM products p
-            CROSS JOIN stores s
-            LEFT JOIN stock st ON st.product_id = p.id AND st.store_id = s.id
-            GROUP BY p.id, p.name, s.id, s.name, st.stock_type
-            ORDER BY p.name ASC, s.name ASC
-        `;
-        const result = await pool.query(query);
         return result.rows;
     }
 
@@ -163,7 +172,7 @@ class Stock {
             FROM stock st
             JOIN products p ON st.product_id = p.id
             JOIN stores s ON st.store_id = s.id
-            WHERE st.quantity < 10
+            WHERE st.quantity < 10 AND st.quantity > 0
             ORDER BY st.quantity ASC
         `;
         const result = await pool.query(query);

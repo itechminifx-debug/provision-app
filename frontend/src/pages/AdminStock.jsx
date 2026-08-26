@@ -23,22 +23,37 @@ const AdminStock = () => {
     }, []);
 
     const loadData = async () => {
-    try {
-        setLoading(true);
-        // Load stock summary - FIXED
-        const stockRes = await stockAPI.getSummary();  // CHANGE THIS
-        setStockData(stockRes.data || []);
-        
-        // Load products for dropdown
-        const productRes = await productAPI.getAll();
-        setProducts(productRes.data || []);
-    } catch (error) {
-        console.error('Error loading stock:', error);
-        toast.error('Failed to load stock data');
-    } finally {
-        setLoading(false);
-    }
-};
+        try {
+            setLoading(true);
+            const stockRes = await stockAPI.getSummary();
+            console.log('📊 API Response:', stockRes);
+            console.log('📊 Data:', stockRes.data);
+            
+            // Process data to ensure quantity is a number
+            const processedData = (stockRes.data || []).map(item => ({
+                ...item,
+                quantity: Number(item.quantity) || 0,
+                stock_type: item.stock_type || 'new_stock',
+                store_id: Number(item.store_id) || 1,
+                product_id: Number(item.product_id) || 0,
+                product_name: item.product_name || 'Unknown',
+                category: item.category || 'Uncategorized',
+                store_name: item.store_name || (item.store_id === 1 ? 'wholesale' : 'retail'),
+                date_added: item.date_added || null
+            }));
+            
+            console.log('📊 Processed Data:', processedData);
+            setStockData(processedData);
+            
+            const productRes = await productAPI.getAll();
+            setProducts(productRes.data || []);
+        } catch (error) {
+            console.error('Error loading stock:', error);
+            toast.error('Failed to load stock data');
+        } finally {
+            setLoading(false);
+        }
+    };
 
     const handleAddStock = async (e) => {
         e.preventDefault();
@@ -68,8 +83,9 @@ const AdminStock = () => {
     };
 
     const getStoreName = (storeId) => {
-        if (storeId === 1) return '🏪 Wholesale';
-        if (storeId === 2) return '🛒 Retail';
+        const id = Number(storeId);
+        if (id === 1) return '🏪 Wholesale';
+        if (id === 2) return '🛒 Retail';
         return 'Unknown';
     };
 
@@ -78,47 +94,29 @@ const AdminStock = () => {
     };
 
     const getStockTypeColor = (type) => {
-        return type === 'new_stock' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700';
+        return type === 'new_stock' 
+            ? 'bg-green-100 text-green-700' 
+            : 'bg-amber-100 text-amber-700';
     };
 
     const getStockStatus = (quantity) => {
-        if (quantity === 0) return { label: 'Out of Stock', color: 'bg-red-100 text-red-700' };
-        if (quantity < 10) return { label: 'Low Stock', color: 'bg-orange-100 text-orange-700' };
-        if (quantity < 30) return { label: 'Medium', color: 'bg-yellow-100 text-yellow-700' };
+        const qty = Number(quantity) || 0;
+        if (qty === 0) return { label: 'Out of Stock', color: 'bg-red-100 text-red-700' };
+        if (qty < 10) return { label: 'Low Stock', color: 'bg-orange-100 text-orange-700' };
+        if (qty < 30) return { label: 'Medium', color: 'bg-yellow-100 text-yellow-700' };
         return { label: 'In Stock', color: 'bg-green-100 text-green-700' };
     };
 
-    // Group stock by product for display
-    const groupedStock = stockData.reduce((acc, item) => {
-        const key = `${item.product_id}-${item.product_name}`;
-        if (!acc[key]) {
-            acc[key] = {
-                product_id: item.product_id,
-                product_name: item.product_name,
-                category: item.category,
-                stores: {}
-            };
-        }
-        const storeKey = `store_${item.store_id}`;
-        if (!acc[key].stores[storeKey]) {
-            acc[key].stores[storeKey] = {
-                store_id: item.store_id,
-                store_name: item.store_name,
-                stock: {}
-            };
-        }
-        acc[key].stores[storeKey].stock[item.stock_type] = item.quantity;
-        return acc;
-    }, {});
-
-    const stockArray = Object.values(groupedStock);
-
     // Filter by store
     const filteredStock = selectedStore === 'all' 
-        ? stockArray 
-        : stockArray.filter(item => 
-            Object.values(item.stores).some(store => store.store_id === parseInt(selectedStore))
-        );
+        ? stockData 
+        : stockData.filter(item => Number(item.store_id) === Number(selectedStore));
+
+    // Calculate totals
+    const totalUnits = stockData.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
+    const totalProducts = new Set(stockData.map(item => item.product_id)).size;
+    const lowStockCount = stockData.filter(item => Number(item.quantity) > 0 && Number(item.quantity) < 10).length;
+    const outOfStockCount = stockData.filter(item => Number(item.quantity) === 0).length;
 
     // Loading skeleton
     if (loading) {
@@ -178,42 +176,22 @@ const AdminStock = () => {
                 {/* Stats */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
                     <div className="bg-white rounded-xl shadow-sm p-4 border border-gray-100">
-                        <p className="text-xs text-gray-500">Total Products</p>
-                        <p className="text-2xl font-bold text-gray-800">{stockArray.length}</p>
+                        <p className="text-xs text-gray-500">Total Stock Entries</p>
+                        <p className="text-2xl font-bold text-gray-800">{stockData.length}</p>
                     </div>
                     <div className="bg-white rounded-xl shadow-sm p-4 border border-gray-100">
-                        <p className="text-xs text-gray-500">Total Stock Value</p>
+                        <p className="text-xs text-gray-500">Total Units</p>
                         <p className="text-2xl font-bold text-emerald-600">
-                            GHS {stockArray.reduce((sum, item) => {
-                                let total = 0;
-                                Object.values(item.stores).forEach(store => {
-                                    Object.values(store.stock).forEach(qty => {
-                                        total += qty * 1; // You can add cost price logic here
-                                    });
-                                });
-                                return sum + total;
-                            }, 0).toLocaleString()}
+                            {totalUnits.toLocaleString()}
                         </p>
                     </div>
                     <div className="bg-white rounded-xl shadow-sm p-4 border border-gray-100">
-                        <p className="text-xs text-gray-500">Low Stock Items</p>
-                        <p className="text-2xl font-bold text-orange-600">
-                            {stockArray.filter(item => 
-                                Object.values(item.stores).some(store => 
-                                    Object.values(store.stock).some(qty => qty > 0 && qty < 10)
-                                )
-                            ).length}
-                        </p>
+                        <p className="text-xs text-gray-500">Products</p>
+                        <p className="text-2xl font-bold text-blue-600">{totalProducts}</p>
                     </div>
                     <div className="bg-white rounded-xl shadow-sm p-4 border border-gray-100">
-                        <p className="text-xs text-gray-500">Out of Stock</p>
-                        <p className="text-2xl font-bold text-red-600">
-                            {stockArray.filter(item => 
-                                Object.values(item.stores).every(store => 
-                                    Object.values(store.stock).every(qty => qty === 0)
-                                )
-                            ).length}
-                        </p>
+                        <p className="text-xs text-gray-500">Low Stock (&lt;10)</p>
+                        <p className="text-2xl font-bold text-orange-600">{lowStockCount}</p>
                     </div>
                 </div>
 
@@ -269,35 +247,22 @@ const AdminStock = () => {
                                     <tr className="bg-gray-50 border-b border-gray-200">
                                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Product</th>
                                         <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Category</th>
-                                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Wholesale</th>
-                                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Retail</th>
+                                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Store</th>
+                                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Stock Type</th>
+                                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Quantity</th>
                                         <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Status</th>
+                                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date Added</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {filteredStock.map((item) => {
-                                        const wholesaleStore = item.stores.store_1;
-                                        const retailStore = item.stores.store_2;
+                                    {filteredStock.map((item, index) => {
+                                        const quantity = Number(item.quantity) || 0;
+                                        const status = getStockStatus(quantity);
                                         
-                                        const wholesaleNew = wholesaleStore?.stock?.new_stock || 0;
-                                        const wholesaleOld = wholesaleStore?.stock?.old_stock || 0;
-                                        const wholesaleTotal = wholesaleNew + wholesaleOld;
-                                        
-                                        const retailNew = retailStore?.stock?.new_stock || 0;
-                                        const retailOld = retailStore?.stock?.old_stock || 0;
-                                        const retailTotal = retailNew + retailOld;
-
-                                        const totalStock = wholesaleTotal + retailTotal;
-                                        const status = getStockStatus(totalStock);
-
-                                        // Determine which store is being filtered
-                                        const showWholesale = selectedStore === 'all' || selectedStore === '1';
-                                        const showRetail = selectedStore === 'all' || selectedStore === '2';
-
                                         return (
-                                            <tr key={item.product_id} className="border-b border-gray-100 hover:bg-gray-50 transition">
+                                            <tr key={`${item.product_id}-${item.store_id}-${item.stock_type}-${index}`} className="border-b border-gray-100 hover:bg-gray-50 transition">
                                                 <td className="px-4 py-3">
-                                                    <div className="font-medium text-gray-800">{item.product_name}</div>
+                                                    <div className="font-medium text-gray-800">{item.product_name || 'Unknown'}</div>
                                                     <div className="text-xs text-gray-400">ID: {item.product_id}</div>
                                                 </td>
                                                 <td className="px-4 py-3">
@@ -305,45 +270,26 @@ const AdminStock = () => {
                                                         {item.category || 'Uncategorized'}
                                                     </span>
                                                 </td>
-                                                <td className="px-4 py-3 text-center">
-                                                    {showWholesale ? (
-                                                        <div>
-                                                            <div className="flex justify-center gap-2 text-sm">
-                                                                <span className="text-green-600 font-medium">{wholesaleNew}</span>
-                                                                <span className="text-amber-600 font-medium">{wholesaleOld}</span>
-                                                            </div>
-                                                            <div className="text-xs text-gray-400 flex justify-center gap-2">
-                                                                <span className="text-green-600">New</span>
-                                                                <span className="text-amber-600">Old</span>
-                                                            </div>
-                                                            <div className="text-sm font-bold text-gray-700">{wholesaleTotal} total</div>
-                                                        </div>
-                                                    ) : (
-                                                        <span className="text-gray-400 text-sm">—</span>
-                                                    )}
+                                                <td className="px-4 py-3">
+                                                    {getStoreName(item.store_id)}
+                                                </td>
+                                                <td className="px-4 py-3">
+                                                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStockTypeColor(item.stock_type)}`}>
+                                                        {getStockTypeLabel(item.stock_type)}
+                                                    </span>
                                                 </td>
                                                 <td className="px-4 py-3 text-center">
-                                                    {showRetail ? (
-                                                        <div>
-                                                            <div className="flex justify-center gap-2 text-sm">
-                                                                <span className="text-green-600 font-medium">{retailNew}</span>
-                                                                <span className="text-amber-600 font-medium">{retailOld}</span>
-                                                            </div>
-                                                            <div className="text-xs text-gray-400 flex justify-center gap-2">
-                                                                <span className="text-green-600">New</span>
-                                                                <span className="text-amber-600">Old</span>
-                                                            </div>
-                                                            <div className="text-sm font-bold text-gray-700">{retailTotal} total</div>
-                                                        </div>
-                                                    ) : (
-                                                        <span className="text-gray-400 text-sm">—</span>
-                                                    )}
+                                                    <span className="text-2xl font-bold text-blue-600">
+                                                        {quantity}
+                                                    </span>
                                                 </td>
                                                 <td className="px-4 py-3 text-center">
                                                     <span className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${status.color}`}>
                                                         {status.label}
                                                     </span>
-                                                    <div className="text-sm font-bold text-gray-700 mt-1">{totalStock} units</div>
+                                                </td>
+                                                <td className="px-4 py-3 text-sm text-gray-500">
+                                                    {item.date_added ? new Date(item.date_added).toLocaleDateString() : '—'}
                                                 </td>
                                             </tr>
                                         );
