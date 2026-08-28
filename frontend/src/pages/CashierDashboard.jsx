@@ -92,55 +92,77 @@ const CashierDashboard = () => {
     const totalAmount = cart.reduce((sum, item) => sum + item.total, 0);
     const itemCount = cart.reduce((sum, item) => sum + item.quantity, 0);
 
-    const handleSale = async () => {
-        if (cart.length === 0) {
-            toast.error('Cart is empty');
-            return;
+const handleSale = async () => {
+    if (cart.length === 0) {
+        toast.error('Cart is empty');
+        return;
+    }
+
+    if (paymentMethod === 'credit' && !customerName.trim()) {
+        toast.error('Customer name required for credit sales');
+        return;
+    }
+
+    setLoading(true);
+    try {
+        // 🔥 FIX: Determine store_id based on sale_type
+        // Wholesale = store_id 1, Retail = store_id 2
+        let storeId;
+        if (saleType === 'wholesale') {
+            storeId = 1; // Wholesale store
+        } else {
+            storeId = 2; // Retail store
         }
 
-        if (paymentMethod === 'credit' && !customerName.trim()) {
-            toast.error('Customer name required for credit sales');
-            return;
-        }
+        console.log('📦 Sale payload:', {
+            store_id: storeId,
+            sale_type: saleType,
+            items: cart.map(item => ({
+                product_id: item.product_id,
+                quantity: item.quantity
+            })),
+            amount_paid: parseFloat(amountPaid) || totalAmount,
+            payment_method: paymentMethod,
+            customer_name: customerName.trim() || undefined
+        });
 
-        setLoading(true);
-        try {
-            const payload = {
-                store_id: user.store_id || 1,
-                sale_type: saleType,
-                items: cart.map(item => ({
-                    product_id: item.product_id,
-                    quantity: item.quantity
-                })),
-                amount_paid: parseFloat(amountPaid) || totalAmount,
-                payment_method: paymentMethod,
-                customer_name: customerName.trim() || undefined
-            };
+        const payload = {
+            store_id: storeId,  // 🔥 FIXED: Using storeId based on saleType
+            sale_type: saleType,
+            items: cart.map(item => ({
+                product_id: item.product_id,
+                quantity: item.quantity
+            })),
+            amount_paid: parseFloat(amountPaid) || totalAmount,
+            payment_method: paymentMethod,
+            customer_name: customerName.trim() || undefined
+        };
 
-            const { data } = await saleAPI.create(payload);
-            
-            setShowReceipt({
-                invoice: data.sale.sale.invoice_number,
-                items: data.sale.items,
-                total: data.sale.total_amount,
-                paid: data.sale.sale.amount_paid,
-                balance: data.sale.balance_due,
-                customer: customerName || 'Walk-in',
-                paymentMethod: paymentMethod,
-                saleType: saleType,
-                cashier: user.full_name,
-                date: new Date(data.sale.sale.created_at).toLocaleString()
-            });
+        const { data } = await saleAPI.create(payload);
+        
+        setShowReceipt({
+            invoice: data.sale.sale.invoice_number,
+            items: data.sale.items,
+            total: data.sale.total_amount,
+            paid: data.sale.sale.amount_paid,
+            balance: data.sale.balance_due,
+            customer: customerName || 'Walk-in',
+            paymentMethod: paymentMethod,
+            saleType: saleType,
+            cashier: user.full_name,
+            date: new Date(data.sale.sale.created_at).toLocaleString()
+        });
 
-            toast.success('🎉 Sale completed successfully!');
-            loadRecentSales();
-            clearCart();
-        } catch (error) {
-            toast.error(error.response?.data?.error || 'Sale failed');
-        } finally {
-            setLoading(false);
-        }
-    };
+        toast.success('🎉 Sale completed successfully!');
+        loadRecentSales();
+        clearCart();
+    } catch (error) {
+        console.error('❌ Sale error:', error);
+        toast.error(error.response?.data?.error || 'Sale failed');
+    } finally {
+        setLoading(false);
+    }
+};
 
     // Receipt Modal
     if (showReceipt) {
