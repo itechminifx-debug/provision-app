@@ -1,4 +1,5 @@
 const Sale = require('../models/Sale');
+const Debtor = require('../models/Debtor');
 
 // Create a new sale
 const createSale = async (req, res) => {
@@ -48,9 +49,20 @@ const createSale = async (req, res) => {
         if (payment_method === 'credit' && sale.balance_due > 0) {
             try {
                 console.log('💳 Processing credit sale for:', customer_name, 'balance:', sale.balance_due);
-                const { handleCreditSale } = require('./debtorController');
-                const debtor = await handleCreditSale(sale.sale.id, customer_name, sale.balance_due);
-                console.log('✅ Debtor created/updated:', debtor);
+                
+                // Find or create debtor
+                let debtor = await Debtor.findByName(customer_name);
+                if (!debtor) {
+                    debtor = await Debtor.create({ customer_name, phone: null });
+                    console.log('✅ New debtor created:', debtor);
+                } else {
+                    console.log('✅ Existing debtor found:', debtor);
+                }
+
+                // Update debtor's total debt
+                const updated = await Debtor.updateTotalDebt(debtor.id, sale.balance_due);
+                console.log('✅ Debtor total debt updated:', updated);
+                
             } catch (debtorError) {
                 console.error('❌ Debtor handling error:', debtorError);
                 // Don't fail the sale if debtor handling fails
