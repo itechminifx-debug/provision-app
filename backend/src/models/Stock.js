@@ -99,23 +99,74 @@ class Stock {
     }
 
     // Deduct stock (when sale is made) - FIFO: old stock first
-    static async deductStock(productId, storeId, quantity) {
-        // Get old stock first
-        const oldStockQuery = `
+static async deductStock(productId, storeId, quantity) {
+    console.log('🔍 ========================================');
+    console.log('🔍 DEDUCT STOCK CALLED:');
+    console.log('   productId:', productId);
+    console.log('   storeId:', storeId);
+    console.log('   quantity:', quantity);
+    console.log('   storeId type:', typeof storeId);
+    console.log('🔍 ========================================');
+    
+    // Check ALL stock for this product and store
+    const checkAllQuery = `
+        SELECT * FROM stock 
+        WHERE product_id = $1 AND store_id = $2
+    `;
+    const checkAllResult = await pool.query(checkAllQuery, [productId, storeId]);
+    console.log('📦 ALL STOCK for product', productId, 'in store', storeId, ':');
+    console.log(JSON.stringify(checkAllResult.rows, null, 2));
+    
+    if (checkAllResult.rows.length === 0) {
+        console.log('❌ NO STOCK FOUND!');
+        throw new Error(`No stock found for product ${productId} in store ${storeId}`);
+    }
+
+    // Get old stock first
+    const oldStockQuery = `
+        SELECT id, quantity FROM stock 
+        WHERE product_id = $1 AND store_id = $2 AND stock_type = 'old_stock' AND quantity > 0
+        ORDER BY date_added ASC
+    `;
+    const oldStock = await pool.query(oldStockQuery, [productId, storeId]);
+    console.log('📦 OLD STOCK found:', oldStock.rows.length, 'rows');
+
+    let remaining = quantity;
+    let deducted = [];
+
+    // Deduct from old stock first
+    for (const stock of oldStock.rows) {
+        if (remaining <= 0) break;
+
+        const deductQty = Math.min(stock.quantity, remaining);
+        console.log(`📦 Deducting ${deductQty} from old stock (ID: ${stock.id})`);
+        const updateQuery = `
+            UPDATE stock 
+            SET quantity = quantity - $1 
+            WHERE id = $2 
+            RETURNING id, quantity
+        `;
+        const result = await pool.query(updateQuery, [deductQty, stock.id]);
+        deducted.push({ stock_id: stock.id, deducted: deductQty });
+        remaining -= deductQty;
+        console.log(`   Remaining after old stock: ${remaining}`);
+    }
+
+    // If still remaining, deduct from new stock
+    if (remaining > 0) {
+        const newStockQuery = `
             SELECT id, quantity FROM stock 
-            WHERE product_id = $1 AND store_id = $2 AND stock_type = 'old_stock' AND quantity > 0
+            WHERE product_id = $1 AND store_id = $2 AND stock_type = 'new_stock' AND quantity > 0
             ORDER BY date_added ASC
         `;
-        const oldStock = await pool.query(oldStockQuery, [productId, storeId]);
+        const newStock = await pool.query(newStockQuery, [productId, storeId]);
+        console.log('📦 NEW STOCK found:', newStock.rows.length, 'rows');
 
-        let remaining = quantity;
-        let deducted = [];
-
-        // Deduct from old stock first
-        for (const stock of oldStock.rows) {
+        for (const stock of newStock.rows) {
             if (remaining <= 0) break;
 
             const deductQty = Math.min(stock.quantity, remaining);
+            console.log(`📦 Deducting ${deductQty} from new stock (ID: ${stock.id})`);
             const updateQuery = `
                 UPDATE stock 
                 SET quantity = quantity - $1 
@@ -125,59 +176,20 @@ class Stock {
             const result = await pool.query(updateQuery, [deductQty, stock.id]);
             deducted.push({ stock_id: stock.id, deducted: deductQty });
             remaining -= deductQty;
+            console.log(`   Remaining after new stock: ${remaining}`);
         }
-
-        // If still remaining, deduct from new stock
-        if (remaining > 0) {
-            const newStockQuery = `
-                SELECT id, quantity FROM stock 
-                WHERE product_id = $1 AND store_id = $2 AND stock_type = 'new_stock' AND quantity > 0
-                ORDER BY date_added ASC
-            `;
-            const newStock = await pool.query(newStockQuery, [productId, storeId]);
-
-            for (const stock of newStock.rows) {
-                if (remaining <= 0) break;
-
-                const deductQty = Math.min(stock.quantity, remaining);
-                const updateQuery = `
-                    UPDATE stock 
-                    SET quantity = quantity - $1 
-                    WHERE id = $2 
-                    RETURNING id, quantity
-                `;
-                const result = await pool.query(updateQuery, [deductQty, stock.id]);
-                deducted.push({ stock_id: stock.id, deducted: deductQty });
-                remaining -= deductQty;
-            }
-        }
-
-        if (remaining > 0) {
-            throw new Error(`Insufficient stock. ${remaining} units not available.`);
-        }
-
-        return deducted;
     }
 
-    // Get low stock alert (quantity < 10)
-    static async getLowStock() {
-        const query = `
-            SELECT 
-                p.id AS product_id,
-                p.name AS product_name,
-                s.id AS store_id,
-                s.name AS store_name,
-                st.stock_type,
-                st.quantity
-            FROM stock st
-            JOIN products p ON st.product_id = p.id
-            JOIN stores s ON st.store_id = s.id
-            WHERE st.quantity < 10 AND st.quantity > 0
-            ORDER BY st.quantity ASC
-        `;
-        const result = await pool.query(query);
-        return result.rows;
+    if (remaining > 0) {
+        console.log('❌ INSUFFICIENT STOCK! Remaining:', remaining);
+        throw new Error(`Insufficient stock. ${remaining} units not available.`);
     }
+
+    console.log('✅ STOCK DEDUCTED SUCCESSFULLY:');
+    console.log(JSON.stringify(deducted, null, 2));
+    console.log('🔍 ========================================');
+    return deducted;
+}
 
     // Get stock history (transfers + sales)
     static async getHistory(productId, storeId) {

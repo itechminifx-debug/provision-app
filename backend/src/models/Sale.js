@@ -49,6 +49,14 @@ class Sale {
                     unit_price: unit_price,
                     total_price: item_total
                 });
+                // Deduct stock (FIFO)
+console.log('🔍 SALE - Deducting stock:', {
+    product_id: item.product_id,
+    store_id: store_id,
+    quantity: item.quantity,
+    sale_type: sale_type
+});
+await Stock.deductStock(item.product_id, store_id, item.quantity);
 
                 // Deduct stock (FIFO)
                 await Stock.deductStock(item.product_id, store_id, item.quantity);
