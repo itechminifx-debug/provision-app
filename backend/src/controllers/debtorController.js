@@ -35,6 +35,7 @@ const createDebtor = async (req, res) => {
 const getAllDebtors = async (req, res) => {
     try {
         const debtors = await Debtor.findAll();
+        console.log('📊 Debtors found:', debtors.length);
         res.json(debtors);
     } catch (error) {
         console.error('Get debtors error:', error);
@@ -101,16 +102,21 @@ const recordPayment = async (req, res) => {
             });
         }
 
-        const payment = await Debtor.recordPayment({
+        const result = await Debtor.recordPayment({
             debtor_id,
             sale_id: sale_id || null,
             amount_paid,
             payment_method
         });
 
+        // Get updated debtor info
+        const updatedDebtor = await Debtor.findById(debtor_id);
+
         res.status(201).json({
             message: 'Payment recorded successfully',
-            payment
+            payment: result.payment,
+            new_total_debt: result.new_total_debt,
+            debtor: updatedDebtor
         });
     } catch (error) {
         console.error('Record payment error:', error);
@@ -136,14 +142,18 @@ const handleCreditSale = async (saleId, customer_name, balance_due) => {
         let debtor = await Debtor.findByName(customer_name);
         if (!debtor) {
             debtor = await Debtor.create({ customer_name, phone: null });
+            console.log('✅ New debtor created:', debtor);
+        } else {
+            console.log('✅ Existing debtor found:', debtor);
         }
 
         // Update debtor's total debt
-        await Debtor.updateTotalDebt(debtor.id, balance_due);
+        const updated = await Debtor.updateTotalDebt(debtor.id, balance_due);
+        console.log('✅ Debtor total debt updated:', updated);
 
         return debtor;
     } catch (error) {
-        console.error('Handle credit sale error:', error);
+        console.error('❌ Handle credit sale error:', error);
         throw error;
     }
 };

@@ -12,7 +12,7 @@ class Debtor {
         return result.rows[0];
     }
 
-    // Get all debtors with outstanding balance
+    // Get all debtors (including those with 0 balance)
     static async findAll() {
         const query = `
             SELECT 
@@ -28,7 +28,7 @@ class Debtor {
             FROM debtors d
             LEFT JOIN payments p ON d.id = p.debtor_id
             GROUP BY d.id
-            
+            ORDER BY d.id DESC
         `;
         const result = await pool.query(query);
         return result.rows;
@@ -75,14 +75,14 @@ class Debtor {
         return result.rows[0];
     }
 
-    // Record a payment
+    // Record a payment - REDUCES the debtor's total debt
     static async recordPayment({ debtor_id, sale_id, amount_paid, payment_method }) {
         const client = await pool.connect();
         
         try {
             await client.query('BEGIN');
 
-            // Insert payment
+            // Insert payment record
             const insertQuery = `
                 INSERT INTO payments (debtor_id, sale_id, amount_paid, payment_method)
                 VALUES ($1, $2, $3, $4)
@@ -95,20 +95,30 @@ class Debtor {
                 payment_method
             ]);
 
-            // Update debtor total debt (reduce it)
+            // REDUCE the debtor's total debt by the amount paid
             const updateQuery = `
                 UPDATE debtors 
                 SET total_debt = total_debt - $1
                 WHERE id = $2
                 RETURNING total_debt
             `;
-            await client.query(updateQuery, [amount_paid, debtor_id]);
+            const updateResult = await client.query(updateQuery, [amount_paid, debtor_id]);
+
+            console.log('✅ Payment recorded:', {
+                debtor_id,
+                amount_paid,
+                new_total_debt: updateResult.rows[0].total_debt
+            });
 
             await client.query('COMMIT');
 
-            return result.rows[0];
+            return {
+                payment: result.rows[0],
+                new_total_debt: updateResult.rows[0].total_debt
+            };
         } catch (error) {
             await client.query('ROLLBACK');
+            console.error('❌ Record payment error:', error);
             throw error;
         } finally {
             client.release();
