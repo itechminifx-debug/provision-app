@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { saleAPI, productAPI } from '../api';
+import { saleAPI, productAPI, stockAPI } from '../api';
 import toast from 'react-hot-toast';
 
 const CashierDashboard = () => {
     const { user, logout } = useAuth();
     const [products, setProducts] = useState([]);
+    const [stockData, setStockData] = useState([]);
     const [cart, setCart] = useState([]);
     const [search, setSearch] = useState('');
     const [saleType, setSaleType] = useState('retail');
@@ -19,8 +20,8 @@ const CashierDashboard = () => {
 
     useEffect(() => {
         loadProducts();
+        loadStock();
         loadRecentSales();
-        // Focus search on load
         setTimeout(() => searchRef.current?.focus(), 500);
     }, []);
 
@@ -30,6 +31,15 @@ const CashierDashboard = () => {
             setProducts(data);
         } catch (error) {
             toast.error('Failed to load products');
+        }
+    };
+
+    const loadStock = async () => {
+        try {
+            const { data } = await stockAPI.getSummary();
+            setStockData(data);
+        } catch (error) {
+            // Silent fail
         }
     };
 
@@ -46,11 +56,32 @@ const CashierDashboard = () => {
         p.name.toLowerCase().includes(search.toLowerCase())
     );
 
+    // Get stock quantity for a product
+    const getStockQuantity = (productId) => {
+        const storeId = saleType === 'wholesale' ? 1 : 2;
+        const stockItem = stockData.find(item => 
+            item.product_id === productId && 
+            item.store_id === storeId
+        );
+        return stockItem ? stockItem.quantity : 0;
+    };
+
     const addToCart = (product) => {
         const price = saleType === 'retail' ? parseFloat(product.retail_price) : parseFloat(product.wholesale_price);
+        const stockQty = getStockQuantity(product.id);
+        
+        if (stockQty <= 0) {
+            toast.error('Product is out of stock!');
+            return;
+        }
+
         const existing = cart.find(item => item.product_id === product.id);
         
         if (existing) {
+            if (existing.quantity >= stockQty) {
+                toast.error('Not enough stock available!');
+                return;
+            }
             setCart(cart.map(item =>
                 item.product_id === product.id
                     ? { ...item, quantity: item.quantity + 1, total: price * (item.quantity + 1) }
@@ -92,77 +123,63 @@ const CashierDashboard = () => {
     const totalAmount = cart.reduce((sum, item) => sum + item.total, 0);
     const itemCount = cart.reduce((sum, item) => sum + item.quantity, 0);
 
-const handleSale = async () => {
-    if (cart.length === 0) {
-        toast.error('Cart is empty');
-        return;
-    }
-
-    if (paymentMethod === 'credit' && !customerName.trim()) {
-        toast.error('Customer name required for credit sales');
-        return;
-    }
-
-    setLoading(true);
-    try {
-        // 🔥 FIX: Determine store_id based on sale_type
-        // Wholesale = store_id 1, Retail = store_id 2
-        let storeId;
-        if (saleType === 'wholesale') {
-            storeId = 1; // Wholesale store
-        } else {
-            storeId = 2; // Retail store
+    const handleSale = async () => {
+        if (cart.length === 0) {
+            toast.error('Cart is empty');
+            return;
         }
 
-        console.log('📦 Sale payload:', {
-            store_id: storeId,
-            sale_type: saleType,
-            items: cart.map(item => ({
-                product_id: item.product_id,
-                quantity: item.quantity
-            })),
-            amount_paid: parseFloat(amountPaid) || totalAmount,
-            payment_method: paymentMethod,
-            customer_name: customerName.trim() || undefined
-        });
+        if (paymentMethod === 'credit' && !customerName.trim()) {
+            toast.error('Customer name required for credit sales');
+            return;
+        }
 
-        const payload = {
-            store_id: storeId,  // 🔥 FIXED: Using storeId based on saleType
-            sale_type: saleType,
-            items: cart.map(item => ({
-                product_id: item.product_id,
-                quantity: item.quantity
-            })),
-            amount_paid: parseFloat(amountPaid) || totalAmount,
-            payment_method: paymentMethod,
-            customer_name: customerName.trim() || undefined
-        };
+        setLoading(true);
+        try {
+            let storeId;
+            if (saleType === 'wholesale') {
+                storeId = 1;
+            } else {
+                storeId = 2;
+            }
 
-        const { data } = await saleAPI.create(payload);
-        
-        setShowReceipt({
-            invoice: data.sale.sale.invoice_number,
-            items: data.sale.items,
-            total: data.sale.total_amount,
-            paid: data.sale.sale.amount_paid,
-            balance: data.sale.balance_due,
-            customer: customerName || 'Walk-in',
-            paymentMethod: paymentMethod,
-            saleType: saleType,
-            cashier: user.full_name,
-            date: new Date(data.sale.sale.created_at).toLocaleString()
-        });
+            const payload = {
+                store_id: storeId,
+                sale_type: saleType,
+                items: cart.map(item => ({
+                    product_id: item.product_id,
+                    quantity: item.quantity
+                })),
+                amount_paid: parseFloat(amountPaid) || totalAmount,
+                payment_method: paymentMethod,
+                customer_name: customerName.trim() || undefined
+            };
 
-        toast.success('🎉 Sale completed successfully!');
-        loadRecentSales();
-        clearCart();
-    } catch (error) {
-        console.error('❌ Sale error:', error);
-        toast.error(error.response?.data?.error || 'Sale failed');
-    } finally {
-        setLoading(false);
-    }
-};
+            const { data } = await saleAPI.create(payload);
+            
+            setShowReceipt({
+                invoice: data.sale.sale.invoice_number,
+                items: data.sale.items,
+                total: data.sale.total_amount,
+                paid: data.sale.sale.amount_paid,
+                balance: data.sale.balance_due,
+                customer: customerName || 'Walk-in',
+                paymentMethod: paymentMethod,
+                saleType: saleType,
+                cashier: user.full_name,
+                date: new Date(data.sale.sale.created_at).toLocaleString()
+            });
+
+            toast.success('🎉 Sale completed successfully!');
+            loadRecentSales();
+            loadStock(); // Refresh stock after sale
+            clearCart();
+        } catch (error) {
+            toast.error(error.response?.data?.error || 'Sale failed');
+        } finally {
+            setLoading(false);
+        }
+    };
 
     // Receipt Modal
     if (showReceipt) {
@@ -356,15 +373,42 @@ const handleSale = async () => {
                             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-4 max-h-[400px] overflow-y-auto">
                                 {filteredProducts.slice(0, 24).map(product => {
                                     const price = saleType === 'retail' ? product.retail_price : product.wholesale_price;
+                                    const stockQty = getStockQuantity(product.id);
+                                    const isLowStock = stockQty < 10 && stockQty > 0;
+                                    const isOutOfStock = stockQty === 0;
+                                    
                                     return (
                                         <button
                                             key={product.id}
                                             onClick={() => addToCart(product)}
-                                            className="group bg-gray-50 hover:bg-blue-50 p-4 rounded-xl text-left transition-all duration-200 hover:shadow-md hover:scale-[1.02] border border-transparent hover:border-blue-200"
+                                            disabled={isOutOfStock}
+                                            className={`group bg-gray-50 hover:bg-blue-50 p-4 rounded-xl text-left transition-all duration-200 hover:shadow-md hover:scale-[1.02] border ${
+                                                isOutOfStock 
+                                                    ? 'border-red-200 opacity-50 cursor-not-allowed' 
+                                                    : isLowStock 
+                                                        ? 'border-orange-300' 
+                                                        : 'border-transparent hover:border-blue-200'
+                                            }`}
                                         >
                                             <div className="font-medium text-sm text-gray-800 truncate">{product.name}</div>
                                             <div className="text-sm font-bold text-emerald-600 mt-1">GHS {price}</div>
                                             <div className="text-xs text-gray-400 mt-0.5">{product.category || 'General'}</div>
+                                            
+                                            {/* Stock Quantity Display */}
+                                            <div className="mt-2 flex items-center gap-2">
+                                                <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                                                    isOutOfStock 
+                                                        ? 'bg-red-100 text-red-700' 
+                                                        : isLowStock 
+                                                            ? 'bg-orange-100 text-orange-700' 
+                                                            : 'bg-green-100 text-green-700'
+                                                }`}>
+                                                    {isOutOfStock ? 'Out of Stock' : `${stockQty} in stock`}
+                                                </span>
+                                                {isLowStock && (
+                                                    <span className="text-xs text-orange-500">⚠️ Low Stock</span>
+                                                )}
+                                            </div>
                                         </button>
                                     );
                                 })}

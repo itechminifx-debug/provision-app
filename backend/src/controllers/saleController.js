@@ -12,6 +12,8 @@ const createSale = async (req, res) => {
             customer_name
         } = req.body;
 
+        console.log('🛒 Creating sale:', { store_id, sale_type, items, amount_paid, payment_method, customer_name });
+
         // Validation
         if (!store_id || !sale_type || !items || items.length === 0) {
             return res.status(400).json({ error: 'Store ID, sale type, and items are required' });
@@ -40,15 +42,21 @@ const createSale = async (req, res) => {
             customer_name
         });
 
+        console.log('✅ Sale created:', sale);
+
         // If credit sale, add to debtors
         if (payment_method === 'credit' && sale.balance_due > 0) {
             try {
+                console.log('💳 Processing credit sale for:', customer_name, 'balance:', sale.balance_due);
                 const { handleCreditSale } = require('./debtorController');
-                await handleCreditSale(sale.sale.id, customer_name, sale.balance_due);
+                const debtor = await handleCreditSale(sale.sale.id, customer_name, sale.balance_due);
+                console.log('✅ Debtor created/updated:', debtor);
             } catch (debtorError) {
-                console.error('Debtor handling error:', debtorError);
+                console.error('❌ Debtor handling error:', debtorError);
                 // Don't fail the sale if debtor handling fails
             }
+        } else {
+            console.log('ℹ️ Not a credit sale or balance_due is 0');
         }
 
         res.status(201).json({
@@ -56,8 +64,8 @@ const createSale = async (req, res) => {
             sale
         });
     } catch (error) {
-        console.error('Create sale error:', error);
-        if (error.message.includes('Insufficient stock')) {
+        console.error('❌ Create sale error:', error);
+        if (error.message && error.message.includes('Insufficient stock')) {
             return res.status(400).json({ error: error.message });
         }
         res.status(500).json({ error: 'An error occurred during sale' });

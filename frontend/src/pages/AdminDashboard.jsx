@@ -17,6 +17,7 @@ const AdminDashboard = () => {
     });
     const [loading, setLoading] = useState(true);
     const [greeting, setGreeting] = useState('');
+    const [lastUpdated, setLastUpdated] = useState(new Date());
 
     useEffect(() => {
         const hour = new Date().getHours();
@@ -25,6 +26,14 @@ const AdminDashboard = () => {
         else setGreeting('🌙 Good Evening');
         
         loadDashboardStats();
+
+        // Auto-refresh every 30 seconds
+        const interval = setInterval(() => {
+            loadDashboardStats();
+            setLastUpdated(new Date());
+        }, 30000);
+
+        return () => clearInterval(interval);
     }, []);
 
     const loadDashboardStats = async () => {
@@ -35,6 +44,10 @@ const AdminDashboard = () => {
             const salesRes = await reportAPI.getDaily(today);
             const debtorRes = await reportAPI.getDebtors();
             const lowStockRes = await reportAPI.getLowStock();
+
+            console.log('📊 Sales Response:', salesRes.data);
+            console.log('📊 Debtor Response:', debtorRes.data);
+            console.log('📊 Low Stock Response:', lowStockRes.data);
 
             setStats({
                 total_sales: salesRes.data.summary?.total_sales || 0,
@@ -82,6 +95,36 @@ const AdminDashboard = () => {
         </div>
     );
 
+    // Loading skeleton
+    if (loading) {
+        return (
+            <div className="min-h-screen bg-gray-50 p-6">
+                <div className="max-w-7xl mx-auto">
+                    <div className="flex justify-between items-center mb-6">
+                        <div className="h-8 w-48 bg-gray-200 rounded animate-pulse"></div>
+                        <div className="h-10 w-32 bg-gray-200 rounded animate-pulse"></div>
+                    </div>
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+                        {[1, 2, 3, 4, 5].map(i => (
+                            <div key={i} className="bg-white rounded-xl shadow-sm p-4 animate-pulse">
+                                <div className="h-4 w-24 bg-gray-200 rounded mb-2"></div>
+                                <div className="h-8 w-32 bg-gray-200 rounded"></div>
+                            </div>
+                        ))}
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                        {[1, 2, 3, 4, 5, 6, 7].map(i => (
+                            <div key={i} className="bg-white rounded-xl shadow-sm p-4 animate-pulse">
+                                <div className="h-12 w-12 bg-gray-200 rounded-xl mb-2"></div>
+                                <div className="h-4 w-20 bg-gray-200 rounded"></div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div className="min-h-screen bg-gray-50">
             {/* Header */}
@@ -96,9 +139,20 @@ const AdminDashboard = () => {
                     </div>
                 </div>
                 <div className="flex items-center gap-4">
-                    <button className="text-gray-400 hover:text-gray-600 transition text-lg">
-                        🔔
+                    <button
+                        onClick={() => {
+                            loadDashboardStats();
+                            setLastUpdated(new Date());
+                            toast.success('Dashboard refreshed!');
+                        }}
+                        className="text-gray-400 hover:text-gray-600 transition text-lg"
+                        title="Refresh Dashboard"
+                    >
+                        🔄
                     </button>
+                    <span className="text-xs text-gray-400 hidden sm:inline">
+                        Last updated: {lastUpdated.toLocaleTimeString()}
+                    </span>
                     <button
                         onClick={logout}
                         className="flex items-center gap-2 text-red-500 hover:text-red-700 text-sm font-medium transition"
@@ -110,7 +164,7 @@ const AdminDashboard = () => {
             </header>
 
             <div className="p-4 md:p-6 max-w-7xl mx-auto">
-                {/* Stats Grid */}
+                {/* Stats Grid - 5 columns */}
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-6">
                     <StatCard 
                         label="Today's Sales" 
@@ -155,7 +209,7 @@ const AdminDashboard = () => {
                             <Link
                                 key={module.name}
                                 to={module.path}
-                                className={`group bg-white rounded-2xl p-5 shadow-sm hover:shadow-xl transition-all duration-300 hover:scale-[1.03] border border-gray-100 hover:border-${module.color.split('-')[1]}-200`}
+                                className="group bg-white rounded-2xl p-5 shadow-sm hover:shadow-xl transition-all duration-300 hover:scale-[1.03] border border-gray-100"
                             >
                                 <div className={`w-12 h-12 ${module.bg} rounded-xl flex items-center justify-center text-2xl mb-3 group-hover:scale-110 transition-transform duration-300`}>
                                     {module.icon}
@@ -214,6 +268,20 @@ const AdminDashboard = () => {
                                     </div>
                                 </div>
                             </div>
+                            <div className="flex items-center gap-4">
+                                <div className="flex-1">
+                                    <div className="flex justify-between text-sm mb-1">
+                                        <span className="text-gray-500">Active Debtors</span>
+                                        <span className="font-medium text-amber-600">{stats.total_debtors} customers</span>
+                                    </div>
+                                    <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                                        <div 
+                                            className="h-full bg-gradient-to-r from-amber-500 to-amber-600 rounded-full transition-all duration-1000"
+                                            style={{ width: `${Math.min((stats.total_debtors / (stats.total_debtors + 1)) * 100, 100)}%` }}
+                                        ></div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                     <div className="bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl shadow-lg p-6 text-white">
@@ -224,6 +292,11 @@ const AdminDashboard = () => {
                         {stats.low_stock_items > 0 && (
                             <div className="mt-4 bg-white/20 backdrop-blur-sm rounded-xl p-3">
                                 <p className="text-sm font-medium">⚠️ {stats.low_stock_items} items need restocking</p>
+                            </div>
+                        )}
+                        {stats.total_debtors > 0 && (
+                            <div className="mt-3 bg-white/20 backdrop-blur-sm rounded-xl p-3">
+                                <p className="text-sm font-medium">👥 {stats.total_debtors} debtors owe GHS {stats.total_outstanding.toLocaleString()}</p>
                             </div>
                         )}
                         <Link 

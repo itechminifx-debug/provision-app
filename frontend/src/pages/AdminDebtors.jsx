@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { debtorAPI } from '../api';
+import API from '../api';
 import toast from 'react-hot-toast';
 
 const AdminDebtors = () => {
@@ -27,11 +27,22 @@ const AdminDebtors = () => {
     const loadDebtors = async () => {
         try {
             setLoading(true);
-            const { data } = await debtorAPI.getAll();
-            setDebtors(data || []);
+            // Use the API directly
+            const response = await API.get('/debtors');
+            console.log('📊 API Response:', response);
+            console.log('📊 Data:', response.data);
+            
+            // The API returns an array directly
+            if (Array.isArray(response.data)) {
+                setDebtors(response.data);
+            } else {
+                setDebtors([]);
+            }
+            console.log('📊 Debtors set:', response.data);
         } catch (error) {
-            console.error('Error loading debtors:', error);
+            console.error('❌ Error loading debtors:', error);
             toast.error('Failed to load debtors');
+            setDebtors([]);
         } finally {
             setLoading(false);
         }
@@ -40,12 +51,13 @@ const AdminDebtors = () => {
     const handleAddDebtor = async (e) => {
         e.preventDefault();
         try {
-            await debtorAPI.create(formData);
+            await API.post('/debtors', formData);
             toast.success('Debtor added successfully!');
             setShowAddModal(false);
             setFormData({ customer_name: '', phone: '' });
             loadDebtors();
         } catch (error) {
+            console.error('❌ Add debtor error:', error);
             toast.error(error.response?.data?.error || 'Failed to add debtor');
         }
     };
@@ -59,22 +71,24 @@ const AdminDebtors = () => {
                 payment_method: paymentData.payment_method
             };
 
-            await debtorAPI.recordPayment(payload);
+            await API.post('/debtors/payments', payload);
             toast.success('Payment recorded successfully!');
             setShowPaymentModal(false);
             setPaymentData({ debtor_id: '', amount_paid: '', payment_method: 'cash' });
             loadDebtors();
         } catch (error) {
+            console.error('❌ Payment error:', error);
             toast.error(error.response?.data?.error || 'Failed to record payment');
         }
     };
 
     const viewPayments = async (debtorId) => {
         try {
-            const { data } = await debtorAPI.getPayments(debtorId);
+            const response = await API.get(`/debtors/${debtorId}/payments`);
             const debtor = debtors.find(d => d.id === debtorId);
-            setSelectedDebtor({ ...debtor, payments: data });
+            setSelectedDebtor({ ...debtor, payments: response.data });
         } catch (error) {
+            console.error('❌ Payment history error:', error);
             toast.error('Failed to load payment history');
         }
     };
