@@ -28,8 +28,7 @@ class Debtor {
             FROM debtors d
             LEFT JOIN payments p ON d.id = p.debtor_id
             GROUP BY d.id
-            HAVING d.total_debt - COALESCE(SUM(p.amount_paid), 0) > 0
-            ORDER BY outstanding_balance DESC
+            
         `;
         const result = await pool.query(query);
         return result.rows;
